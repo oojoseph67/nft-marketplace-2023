@@ -11,6 +11,7 @@ import {
   useActiveListings,
   MediaRenderer,
   ChainId,
+  useNFTBalance,
 } from "@thirdweb-dev/react";
 import { BigNumber } from "ethers";
 import styles from "../styles/Home.module.css";
@@ -122,6 +123,9 @@ export default function Home() {
         ) : (
           <div>Loading...</div>
         )}
+        <h1>
+          Wallet Holdings
+        </h1>
       </main>
     </div>
   );
