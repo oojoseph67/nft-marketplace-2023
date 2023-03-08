@@ -1,7 +1,4 @@
-import {
-  useEffect,
-  useState
-} from "react"
+import { useEffect, useState } from "react";
 import {
   ConnectWallet,
   useNetwork,
@@ -15,14 +12,20 @@ import {
 } from "@thirdweb-dev/react";
 import { BigNumber } from "ethers";
 import styles from "../styles/Home.module.css";
+import axios from "axios"
 import shortenAddress from "../utils/shortenAddress";
 
+const { default: Moralis } = require("moralis");
+
 export default function Home() {
+  const apiKey = process.env.NEXT_PUBLIC_MORALIS_API_KEY;
+
   const address = useAddress();
   console.log("address", address);
 
-  const isMismatched = useNetworkMismatch()
-  const [, switchNetwork] = useNetwork()
+  const isMismatched = useNetworkMismatch();
+  const [, switchNetwork] = useNetwork();
+  const [nftBalance, setNFTBalance] = useState([])
 
   const { contract: marketplaceContract } = useContract(
     process.env.NEXT_PUBLIC_MARKETPLACE_CONTRACT,
@@ -52,14 +55,53 @@ export default function Home() {
   // };
 
   async function networkCheck() {
-    if(isMismatched) {
-      await switchNetwork(ChainId.BinanceSmartChainTestnet)
+    if (isMismatched) {
+      await switchNetwork(ChainId.BinanceSmartChainTestnet);
     }
   }
 
+  async function getNFTBalance() {
+    if(address) {
+       console.log("address inside nft get balance", address)
+       try {
+         const res = await axios.get(`http://localhost:9000/nftBalance`, {
+           params: {
+             address: address,
+             chain: "0x61",
+           },
+         });
+         console.log("nft balance", res.data.result);
+        //  setNFTBalance(res.data.result)
+        nftProcessing(res.data.result);
+       } catch (error) {
+         console.error(error);
+         console.log(error);
+       }
+    }
+  }
+
+  function nftProcessing(nftData) {
+    for(let i = 0; i < nftData.length; i++) {
+      let meta = JSON.parse(nftData[i].metadata)
+      if(meta && meta.image){
+        if(meta.image.includes(".")) {
+          nftData[i].image = meta.image
+          nftData[i].token_name = meta.name
+        } else {
+          nftData[i].image = "https://ipfs.moralis.io:2053/ipfs/" + meta.image;
+        }
+      }
+    }
+    setNFTBalance(nftData)
+  }
+
   useEffect(() => {
-    networkCheck()
-  }, [address])
+    networkCheck();
+  }, [address]);
+
+  useEffect(() => {
+    getNFTBalance();
+  }, [address]);
 
   return (
     <div className={styles.container}>
@@ -67,9 +109,7 @@ export default function Home() {
         <h1>NFT Marketplace</h1>
         <ConnectWallet />
         <br></br>
-        <h1>
-          Active Listing
-        </h1>
+        <h1>Active Listing</h1>
         {!listingIsLoading ? (
           <div>
             {listingData &&
@@ -104,7 +144,7 @@ export default function Home() {
                                   BigNumber.from(nft.id),
                                   1
                                 );
-                                console.log("buyNFT", buyNFT)
+                              console.log("buyNFT", buyNFT);
                               alert(buyNFT);
                             } catch (error) {
                               console.error(error);
@@ -123,9 +163,25 @@ export default function Home() {
         ) : (
           <div>Loading...</div>
         )}
-        <h1>
-          Wallet Holdings
-        </h1>
+        <h1>Wallet Holdings</h1>
+        <div>
+          {
+            nftBalance && nftBalance.map((nft) => {
+              return (
+                <div key={nft.block_number}>
+                  <MediaRenderer
+                    src={nft.image}
+                    height="200px"
+                    width="200px"
+                  />
+                  <p>Name: {nft.token_name}</p>
+                  <p>Collection Name: {nft.name}</p>
+                  <p>Collection Symbol: {nft.symbol}</p>
+                </div>
+              );
+            })
+          }
+        </div>
       </main>
     </div>
   );
