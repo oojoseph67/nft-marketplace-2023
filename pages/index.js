@@ -9,11 +9,13 @@ import {
   MediaRenderer,
   ChainId,
   useNFTBalance,
+  useMakeBid,
 } from "@thirdweb-dev/react";
 import { BigNumber } from "ethers";
 import styles from "../styles/Home.module.css";
 import axios from "axios"
 import shortenAddress from "../utils/shortenAddress";
+import { NATIVE_TOKEN_ADDRESS } from "@thirdweb-dev/sdk";
 
 const { default: Moralis } = require("moralis");
 
@@ -40,6 +42,12 @@ export default function Home() {
   } = useActiveListings(marketplaceContract);
   console.log("listing details", listingData);
 
+  // const {
+  //   mutate: makeBid,
+  //   isLoading: makeBidIsLoading,
+  //   error: makeBidError
+  // } = useMakeBid(marketplaceContract)
+
   // const buyNFT = async (listingId) => {
   //   try {
   //     const buyNFT = await marketplaceContract?.buyoutListing(
@@ -53,6 +61,11 @@ export default function Home() {
   //     // alert(error);
   //   }
   // };
+
+  async function getActiveListing() {
+    const listing = await marketplaceContract.getActiveListings();
+    console.log("listing listing", listing)
+  }
 
   async function networkCheck() {
     if (isMismatched) {
@@ -101,7 +114,70 @@ export default function Home() {
 
   useEffect(() => {
     getNFTBalance();
+    getActiveListing()
   }, [address]);
+
+  async function createAuctionListing(e) {
+    // prevent page from refreshing
+    e.preventDefault();
+    
+    let { contractAddress, tokenId, price } = e.target.elements
+
+    contractAddress = contractAddress.value
+    tokenId = tokenId.value
+    price = price.value
+
+    try {
+      const tx = await marketplaceContract?.auction.createListing({
+        assetContractAddress: contractAddress,
+        buyoutPricePerToken: price, // buy out price
+        currencyContractAddress: NATIVE_TOKEN_ADDRESS,
+        listingDurationInSeconds: 60 * 60 * 24 * 7, // 1 week
+        quantity: 1,
+        reservePricePerToken: 0.05,
+        startTimestamp: new Date(),
+        tokenId: tokenId
+      })
+
+      console.log("auction tx", tx)
+      const receipt = tx.receipt
+      const listingId = tx.id
+      console.log("receipt", receipt)
+      console.log("listingId", listingId)
+      
+      return tx
+    } catch (error) {
+      console.error(error)
+      console.log(error)
+    }
+  }
+
+  async function createAuctionBid(e) {
+    e.preventDefault()
+
+    let { price, id } = e.target.elements
+
+    console.log("price", price.value)
+    console.log("id.value", id.value);
+
+    price = price.value
+    id = id.value
+
+    try {
+      const tx = await marketplaceContract?.auction.makeBid(
+        id,
+        price
+      )
+
+      console.log("auction tx", tx);
+      const receipt = tx.receipt;
+      console.log("receipt", receipt);
+       
+    } catch(error) {
+      console.error(error);
+      console.log(error);
+    }
+  }
 
   return (
     <div className={styles.container}>
@@ -130,30 +206,56 @@ export default function Home() {
                       Seller: {nft.sellerAddress.slice(0, 6)}...
                       {nft.sellerAddress.slice(nft.sellerAddress.length - 4)}
                     </p>
+                    <p>
+                      Listing Type:{" "}
+                      {nft.type == 0 ? "Direct Listing" : "Auction Listing"}
+                    </p>
                     {!address ? (
                       <div>
                         <p> Please Connect Your Wallet </p>
                       </div>
                     ) : (
                       <div>
-                        <button
-                          onClick={async () => {
-                            try {
-                              const buyNFT =
-                                await marketplaceContract?.buyoutListing(
-                                  BigNumber.from(nft.id),
-                                  1
-                                );
-                              console.log("buyNFT", buyNFT);
-                              alert(buyNFT);
-                            } catch (error) {
-                              console.error(error);
-                              console.log(error);
-                              // alert(error);
-                            }
-                          }}>
-                          Buy Now
-                        </button>
+                        {nft.type == 1 ? (
+                          <>
+                            <form onSubmit={(e) => createAuctionBid(e)}>
+                              <input
+                                type="number"
+                                step="any"
+                                name="price"
+                                placeholder="Price"
+                              />
+                              <input
+                                name="id"
+                                value={nft.id}
+                                hidden
+                              />
+
+                              <button type="submit">Price Offer</button>
+                            </form>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const buyNFT =
+                                    await marketplaceContract?.buyoutListing(
+                                      BigNumber.from(nft.id),
+                                      1
+                                    );
+                                  console.log("buyNFT", buyNFT);
+                                  alert(buyNFT);
+                                } catch (error) {
+                                  console.error(error);
+                                  console.log(error);
+                                  // alert(error);
+                                }
+                              }}>
+                              Buy Now
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -165,22 +267,44 @@ export default function Home() {
         )}
         <h1>Wallet Holdings</h1>
         <div>
-          {
-            nftBalance && nftBalance.map((nft) => {
-              return (
-                <div key={nft.block_number}>
-                  <MediaRenderer
-                    src={nft.image}
-                    height="200px"
-                    width="200px"
-                  />
-                  <p>Name: {nft.token_name}</p>
-                  <p>Collection Name: {nft.name}</p>
-                  <p>Collection Symbol: {nft.symbol}</p>
-                </div>
-              );
-            })
-          }
+          {!address ? (
+            <div>
+              <p>Connect Your Wallet</p>
+            </div>
+          ) : (
+            <div>
+              {!nftBalance ? (
+                nftBalance &&
+                nftBalance.map((nft) => {
+                  return (
+                    <div key={nft.block_number}>
+                      <MediaRenderer
+                        src={nft.image}
+                        height="200px"
+                        width="200px"
+                      />
+                      <p>Name: {nft.token_name}</p>
+                      <p>Collection Name: {nft.name}</p>
+                      <p>Collection Symbol: {nft.symbol}</p>
+                      <form onSubmit={(e) => createAuctionListing(e)}>
+                        <input
+                          name="contractAddress"
+                          value={nft.token_address}
+                          hidden
+                        />
+                        <input name="tokenId" value={nft.token_id} hidden />
+                        <input type="number" name="price" placeholder="Price" />
+
+                        <button type="submit">Auction NFT</button>
+                      </form>
+                    </div>
+                  );
+                })
+              ) : (
+                <>NO NFT IN THE WALLET</>
+              )}
+            </div>
+          )}
         </div>
       </main>
     </div>
