@@ -10,10 +10,11 @@ import {
   ChainId,
   useNFTBalance,
   useMakeBid,
+  useOffers,
 } from "@thirdweb-dev/react";
 import { BigNumber } from "ethers";
 import styles from "../styles/Home.module.css";
-import axios from "axios"
+import axios from "axios";
 import shortenAddress from "../utils/shortenAddress";
 import { NATIVE_TOKEN_ADDRESS } from "@thirdweb-dev/sdk";
 
@@ -27,7 +28,9 @@ export default function Home() {
 
   const isMismatched = useNetworkMismatch();
   const [, switchNetwork] = useNetwork();
-  const [nftBalance, setNFTBalance] = useState([])
+  const [nftBalance, setNFTBalance] = useState([]);
+  const [listingID, setListingID] = useState([])
+  const [auctionWinner, setAuctionWinner] = useState()
 
   const { contract: marketplaceContract } = useContract(
     process.env.NEXT_PUBLIC_MARKETPLACE_CONTRACT,
@@ -62,11 +65,6 @@ export default function Home() {
   //   }
   // };
 
-  async function getActiveListing() {
-    const listing = await marketplaceContract.getActiveListings();
-    console.log("listing listing", listing)
-  }
-
   async function networkCheck() {
     if (isMismatched) {
       await switchNetwork(ChainId.BinanceSmartChainTestnet);
@@ -74,38 +72,38 @@ export default function Home() {
   }
 
   async function getNFTBalance() {
-    if(address) {
-       console.log("address inside nft get balance", address)
-       try {
-         const res = await axios.get(`http://localhost:9000/nftBalance`, {
-           params: {
-             address: address,
-             chain: "0x61",
-           },
-         });
-         console.log("nft balance", res.data.result);
+    if (address) {
+      console.log("address inside nft get balance", address);
+      try {
+        const res = await axios.get(`http://localhost:9000/nftBalance`, {
+          params: {
+            address: address,
+            chain: "0x61",
+          },
+        });
+        console.log("nft balance", res.data.result);
         //  setNFTBalance(res.data.result)
         nftProcessing(res.data.result);
-       } catch (error) {
-         console.error(error);
-         console.log(error);
-       }
+      } catch (error) {
+        console.error(error);
+        console.log(error);
+      }
     }
   }
 
   function nftProcessing(nftData) {
-    for(let i = 0; i < nftData.length; i++) {
-      let meta = JSON.parse(nftData[i].metadata)
-      if(meta && meta.image){
-        if(meta.image.includes(".")) {
-          nftData[i].image = meta.image
-          nftData[i].token_name = meta.name
+    for (let i = 0; i < nftData.length; i++) {
+      let meta = JSON.parse(nftData[i].metadata);
+      if (meta && meta.image) {
+        if (meta.image.includes(".")) {
+          nftData[i].image = meta.image;
+          nftData[i].token_name = meta.name;
         } else {
           nftData[i].image = "https://ipfs.moralis.io:2053/ipfs/" + meta.image;
         }
       }
     }
-    setNFTBalance(nftData)
+    setNFTBalance(nftData);
   }
 
   useEffect(() => {
@@ -114,18 +112,17 @@ export default function Home() {
 
   useEffect(() => {
     getNFTBalance();
-    getActiveListing()
   }, [address]);
 
   async function createAuctionListing(e) {
     // prevent page from refreshing
     e.preventDefault();
-    
-    let { contractAddress, tokenId, price } = e.target.elements
 
-    contractAddress = contractAddress.value
-    tokenId = tokenId.value
-    price = price.value
+    let { contractAddress, tokenId, price } = e.target.elements;
+
+    contractAddress = contractAddress.value;
+    tokenId = tokenId.value;
+    price = price.value;
 
     try {
       const tx = await marketplaceContract?.auction.createListing({
@@ -136,48 +133,86 @@ export default function Home() {
         quantity: 1,
         reservePricePerToken: 0.05,
         startTimestamp: new Date(),
-        tokenId: tokenId
-      })
-
-      console.log("auction tx", tx)
-      const receipt = tx.receipt
-      const listingId = tx.id
-      console.log("receipt", receipt)
-      console.log("listingId", listingId)
-      
-      return tx
-    } catch (error) {
-      console.error(error)
-      console.log(error)
-    }
-  }
-
-  async function createAuctionBid(e) {
-    e.preventDefault()
-
-    let { price, id } = e.target.elements
-
-    console.log("price", price.value)
-    console.log("id.value", id.value);
-
-    price = price.value
-    id = id.value
-
-    try {
-      const tx = await marketplaceContract?.auction.makeBid(
-        id,
-        price
-      )
+        tokenId: tokenId,
+      });
 
       console.log("auction tx", tx);
       const receipt = tx.receipt;
+      const listingId = tx.id;
       console.log("receipt", receipt);
-       
-    } catch(error) {
+      console.log("listingId", listingId);
+
+      return tx;
+    } catch (error) {
       console.error(error);
       console.log(error);
     }
   }
+
+  async function createAuctionBid(e) {
+    e.preventDefault();
+
+    let { price, id } = e.target.elements;
+
+    console.log("price", price.value);
+    console.log("id.value", id.value);
+
+    price = price.value;
+    id = id.value;
+
+    try {
+      const tx = await marketplaceContract?.auction.makeBid(id, price);
+
+      console.log("auction tx", tx);
+      const receipt = tx.receipt;
+      console.log("receipt", receipt);
+    } catch (error) {
+      console.error(error);
+      console.log(error);
+    }
+  }
+
+  async function getWinningBid() {
+    try {
+      let listingId = 2;
+      const winningBid = await marketplaceContract?.auction.getWinningBid(
+        listingId
+      );
+      // .then((offer) => console.log("offers",offer))
+      // .catch((err) => console.error(err));
+      console.log("winning bid", winningBid);
+    } catch (error) {
+      console.error(error);
+      console.log(error);
+    }
+  }
+
+  async function getWinner() {
+    try {
+      let listingId = 2;
+      const winner = await marketplaceContract?.auction.getWinner(
+        listingId
+      );
+      console.log("auction winner", winner)
+    } catch (error) {
+      console.error(error);
+      console.log(error);
+    }
+  }
+
+  async function getOffers() {
+    let listingId = 2;
+
+    const offers = await marketplaceContract?.getOffers(listingId);
+    console.log("offers", offers);
+  }
+
+  console.log("listing listing", listingID)
+
+  useEffect(() => {
+    getWinningBid();
+    // getOffers()
+  }, []);
 
   return (
     <div className={styles.container}>
@@ -207,12 +242,18 @@ export default function Home() {
                       {nft.sellerAddress.slice(nft.sellerAddress.length - 4)}
                     </p>
                     <p>
+                      Start Time: {nft.startTimeInEpochSeconds.toString()}
+                    </p>
+                    <p>
+                      End Time: {nft.endTimeInEpochSeconds.toString()}
+                    </p>
+                    <p>
                       Listing Type:{" "}
                       {nft.type == 0 ? "Direct Listing" : "Auction Listing"}
                     </p>
                     {!address ? (
                       <div>
-                        <p> Please Connect Your Wallet </p>
+                        <p> Please Connect Your Wallet To Be Able To Make Purchase </p>
                       </div>
                     ) : (
                       <div>
@@ -223,13 +264,10 @@ export default function Home() {
                                 type="number"
                                 step="any"
                                 name="price"
+                                min={nft.reservePriceCurrencyValuePerToken.displayValue}
                                 placeholder="Price"
                               />
-                              <input
-                                name="id"
-                                value={nft.id}
-                                hidden
-                              />
+                              <input name="id" value={nft.id} hidden />
 
                               <button type="submit">Price Offer</button>
                             </form>
